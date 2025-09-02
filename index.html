@@ -1,0 +1,926 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>JCF Fraud Dept — Duty Roster</title>
+  <!-- Tailwind CSS (CDN) -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <script>
+    tailwind.config = { theme: { extend: { fontFamily: { sans: ['Inter','ui-sans-serif','system-ui'] }}}}
+  </script>
+  <style>
+    :root{
+      --brand:#0ea5e9; /* sky-500 */
+      --brand-dark:#0369a1; /* sky-800 */
+    }
+    html,body{ height:100%; }
+    [data-tab]{ display:none; }
+    [data-tab].active{ display:block; }
+    .scrollbar-thin::-webkit-scrollbar{ height:8px; width:8px; }
+    .scrollbar-thin::-webkit-scrollbar-thumb{ background:#CBD5E1; border-radius:8px; }
+    .print\:hidden{ }
+    @media print{
+      .print\:hidden{ display:none !important; }
+      .print\:block{ display:block !important; }
+      .page{ box-shadow:none !important; }
+    }
+    /* Drag & drop visuals */
+    .droptarget{ min-height:58px; }
+    .droptarget.dragover{ outline:2px dashed var(--brand); outline-offset:2px; background:#f0f9ff; }
+  </style>
+</head>
+<body class="bg-slate-50 text-slate-900">
+  <div class="min-h-screen">
+    <!-- Top Bar -->
+    <header class="sticky top-0 z-40 bg-white/80 backdrop-blur border-b border-slate-200">
+      <div class="max-w-7xl mx-auto px-4 py-3 flex items-center gap-3">
+        <div class="h-10 w-10 rounded-xl bg-sky-500 text-white grid place-content-center font-bold">JCF</div>
+        <div class="mr-auto">
+          <h1 class="text-xl font-semibold leading-tight">Fraud Dept — Duty Roster</h1>
+          <p class="text-xs text-slate-500">Time zone: America/Jamaica (EST, no DST)</p>
+        </div>
+        <div class="flex items-center gap-2 print:hidden">
+          <button id="btnExportCSV" class="px-3 py-2 rounded-lg bg-slate-900 text-white text-sm">Export CSV</button>
+          <button id="btnPrint" class="px-3 py-2 rounded-lg bg-white border text-sm">Print</button>
+          <button id="btnSave" class="px-3 py-2 rounded-lg bg-sky-600 text-white text-sm">Save</button>
+        </div>
+      </div>
+      <!-- Nav -->
+      <nav class="border-t border-slate-200">
+        <div class="max-w-7xl mx-auto px-4">
+          <ul class="flex items-center gap-2 overflow-x-auto py-2 scrollbar-thin print:hidden">
+            <li><button data-nav="roster" class="tablink px-3 py-2 rounded-lg bg-sky-100 text-sky-700">Roster</button></li>
+            <li><button data-nav="staff" class="tablink px-3 py-2 rounded-lg hover:bg-slate-100">Staff</button></li>
+            <li><button data-nav="templates" class="tablink px-3 py-2 rounded-lg hover:bg-slate-100">Shift Templates</button></li>
+            <li><button data-nav="reports" class="tablink px-3 py-2 rounded-lg hover:bg-slate-100">Reports</button></li>
+            <li><button data-nav="settings" class="tablink px-3 py-2 rounded-lg hover:bg-slate-100">Settings</button></li>
+          </ul>
+        </div>
+      </nav>
+    </header>
+
+    <!-- Main -->
+    <main class="max-w-7xl mx-auto px-4 py-4">
+      <!-- Roster TAB -->
+      <section id="tab-roster" data-tab class="active">
+        <div class="grid lg:grid-cols-4 gap-4">
+          <!-- Sidebar: Staff Bank -->
+          <aside class="lg:col-span-1 print:hidden">
+            <div class="bg-white rounded-2xl border border-slate-200 p-4 h-full flex flex-col">
+              <div class="flex items-center gap-2 mb-3">
+                <input id="staffSearch" type="text" placeholder="Search staff…" class="w-full px-3 py-2 border rounded-lg">
+                <button id="refreshStaff" class="px-3 py-2 border rounded-lg">↻</button>
+              </div>
+              <div class="text-xs text-slate-500 mb-2">Drag a member into a cell to assign.</div>
+              <ul id="staffList" class="space-y-2 overflow-auto" style="max-height:60vh"></ul>
+            </div>
+          </aside>
+
+          <!-- Roster Builder -->
+          <section class="lg:col-span-3">
+            <div class="bg-white rounded-2xl border border-slate-200 p-4">
+              <div class="flex flex-col md:flex-row md:items-end md:justify-between gap-3 mb-3">
+                <div class="grid grid-cols-2 md:grid-cols-4 gap-3 w-full">
+                  <div>
+                    <label class="block text-xs text-slate-500 mb-1">Week starting (Mon)</label>
+                    <input id="weekStart" type="date" class="w-full px-3 py-2 border rounded-lg">
+                  </div>
+                  <div>
+                    <label class="block text-xs text-slate-500 mb-1">Template</label>
+                    <select id="templateSelect" class="w-full px-3 py-2 border rounded-lg"></select>
+                  </div>
+                  <div>
+                    <label class="block text-xs text-slate-500 mb-1">Per-shift capacity</label>
+                    <input id="shiftCapacity" type="number" min="1" value="4" class="w-full px-3 py-2 border rounded-lg">
+                  </div>
+                  <div class="flex items-end gap-2">
+                    <button id="btnAutoAssign" class="px-3 py-2 rounded-lg bg-emerald-600 text-white w-full">Auto-assign</button>
+                  </div>
+                </div>
+                <div class="flex gap-2">
+                  <button id="btnClearWeek" class="px-3 py-2 rounded-lg border">Clear week</button>
+                  <button id="btnValidate" class="px-3 py-2 rounded-lg border">Validate</button>
+                </div>
+              </div>
+
+              <!-- Roster Grid -->
+              <div id="rosterGrid" class="overflow-auto">
+                <!-- dynamic table here -->
+              </div>
+            </div>
+          </section>
+        </div>
+      </section>
+
+      <!-- Staff TAB -->
+      <section id="tab-staff" data-tab>
+        <div class="grid md:grid-cols-2 gap-4">
+          <div class="bg-white rounded-2xl border border-slate-200 p-4">
+            <h2 class="text-lg font-semibold mb-3">Add / Edit Staff</h2>
+            <form id="staffForm" class="grid grid-cols-2 gap-3">
+              <input type="hidden" id="staffId">
+              <div class="col-span-2">
+                <label class="block text-xs text-slate-500 mb-1">Full name</label>
+                <input id="staffName" class="w-full px-3 py-2 border rounded-lg" required>
+              </div>
+              <div>
+                <label class="block text-xs text-slate-500 mb-1">Rank</label>
+                <input id="staffRank" class="w-full px-3 py-2 border rounded-lg" placeholder="eg. Sgt, Cpl, DC">
+              </div>
+              <div>
+                <label class="block text-xs text-slate-500 mb-1">Role</label>
+                <input id="staffRole" class="w-full px-3 py-2 border rounded-lg" placeholder="eg. Case Ofcr, Analyst">
+              </div>
+              <div>
+                <label class="block text-xs text-slate-500 mb-1">Phone</label>
+                <input id="staffPhone" class="w-full px-3 py-2 border rounded-lg" placeholder="876-…">
+              </div>
+              <div>
+                <label class="block text-xs text-slate-500 mb-1">Email</label>
+                <input id="staffEmail" type="email" class="w-full px-3 py-2 border rounded-lg" placeholder="name@jcf.gov.jm">
+              </div>
+              <div>
+                <label class="block text-xs text-slate-500 mb-1">Max shifts / week</label>
+                <input id="staffMaxWeek" type="number" min="1" value="5" class="w-full px-3 py-2 border rounded-lg">
+              </div>
+              <div class="col-span-2">
+                <label class="block text-xs text-slate-500 mb-1">Preferred shifts (comma‑separated keys)</label>
+                <input id="staffPrefs" class="w-full px-3 py-2 border rounded-lg" placeholder="M,E,N">
+              </div>
+              <div class="col-span-2">
+                <label class="block text-xs text-slate-500 mb-1">Regular days off</label>
+                <div class="grid grid-cols-7 gap-2">
+                  <label class="text-xs flex items-center gap-1"><input type="checkbox" class="dayoff" value="1">Mon</label>
+                  <label class="text-xs flex items-center gap-1"><input type="checkbox" class="dayoff" value="2">Tue</label>
+                  <label class="text-xs flex items-center gap-1"><input type="checkbox" class="dayoff" value="3">Wed</label>
+                  <label class="text-xs flex items-center gap-1"><input type="checkbox" class="dayoff" value="4">Thu</label>
+                  <label class="text-xs flex items-center gap-1"><input type="checkbox" class="dayoff" value="5">Fri</label>
+                  <label class="text-xs flex items-center gap-1"><input type="checkbox" class="dayoff" value="6">Sat</label>
+                  <label class="text-xs flex items-center gap-1"><input type="checkbox" class="dayoff" value="0">Sun</label>
+                </div>
+              </div>
+              <div class="col-span-2">
+                <label class="block text-xs text-slate-500 mb-1">Notes</label>
+                <textarea id="staffNotes" class="w-full px-3 py-2 border rounded-lg" rows="3"></textarea>
+              </div>
+              <div class="col-span-2 flex gap-2">
+                <button class="px-3 py-2 rounded-lg bg-sky-600 text-white" type="submit">Save</button>
+                <button id="staffFormReset" class="px-3 py-2 rounded-lg border" type="button">Reset</button>
+              </div>
+            </form>
+          </div>
+          <div class="bg-white rounded-2xl border border-slate-200 p-4">
+            <div class="flex items-center justify-between mb-3">
+              <h2 class="text-lg font-semibold">Current Staff <span id="staffCount" class="text-slate-400 font-normal"></span></h2>
+              <div class="flex gap-2">
+                <button id="importStaffBtn" class="px-3 py-2 rounded-lg border">Import JSON</button>
+                <button id="exportStaffBtn" class="px-3 py-2 rounded-lg border">Export JSON</button>
+              </div>
+            </div>
+            <div class="overflow-auto" style="max-height:540px">
+              <table class="min-w-full text-sm">
+                <thead>
+                  <tr class="border-b text-left text-slate-500">
+                    <th class="py-2 pr-2">Name</th>
+                    <th class="py-2 pr-2">Rank</th>
+                    <th class="py-2 pr-2">Role</th>
+                    <th class="py-2 pr-2">Max/Wk</th>
+                    <th class="py-2 pr-2">Actions</th>
+                  </tr>
+                </thead>
+                <tbody id="staffTable"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Templates TAB -->
+      <section id="tab-templates" data-tab>
+        <div class="bg-white rounded-2xl border border-slate-200 p-4">
+          <div class="flex items-center justify-between mb-4">
+            <h2 class="text-lg font-semibold">Shift Templates</h2>
+            <button id="addTemplateBtn" class="px-3 py-2 rounded-lg border">Add Template</button>
+          </div>
+          <p class="text-sm text-slate-600 mb-3">Define named sets of shifts per day (e.g., Morning/Evening/Night). Keys are short codes used in preferences.</p>
+          <div id="templateList" class="grid md:grid-cols-2 gap-4"></div>
+        </div>
+      </section>
+
+      <!-- Reports TAB -->
+      <section id="tab-reports" data-tab>
+        <div class="bg-white rounded-2xl border border-slate-200 p-4">
+          <h2 class="text-lg font-semibold mb-3">Weekly Summary</h2>
+          <div class="grid md:grid-cols-3 gap-4 mb-4">
+            <div>
+              <label class="block text-xs text-slate-500 mb-1">Week starting (Mon)</label>
+              <input id="reportWeek" type="date" class="w-full px-3 py-2 border rounded-lg">
+            </div>
+            <div class="md:col-span-2 flex items-end gap-2">
+              <button id="btnBuildReport" class="px-3 py-2 rounded-lg bg-slate-900 text-white">Build Report</button>
+              <button id="btnDownloadReport" class="px-3 py-2 rounded-lg border">Download .txt</button>
+            </div>
+          </div>
+          <pre id="reportOutput" class="bg-slate-50 border rounded-lg p-4 whitespace-pre-wrap text-sm"></pre>
+        </div>
+      </section>
+
+      <!-- Settings TAB -->
+      <section id="tab-settings" data-tab>
+        <div class="grid md:grid-cols-2 gap-4">
+          <div class="bg-white rounded-2xl border border-slate-200 p-4">
+            <h2 class="text-lg font-semibold mb-3">Access & Admin</h2>
+            <label class="block text-xs text-slate-500 mb-1">Admin passcode (simple gate)</label>
+            <input id="adminPass" type="password" class="w-full px-3 py-2 border rounded-lg mb-2" placeholder="Set a passcode">
+            <button id="saveSettings" class="px-3 py-2 rounded-lg bg-sky-600 text-white">Save Settings</button>
+            <p class="text-xs text-slate-500 mt-2">Note: This is a light deterrent. For secure multi‑user access, enable Firebase below and host on a private URL.</p>
+          </div>
+
+          <div class="bg-white rounded-2xl border border-slate-200 p-4">
+            <h2 class="text-lg font-semibold mb-3">Optional Cloud Sync (Firebase)</h2>
+            <p class="text-sm text-slate-600 mb-3">Fill these if you want remote multi‑device syncing. Leave blank to stay fully offline (IndexedDB only).</p>
+            <div class="grid grid-cols-2 gap-3 text-sm">
+              <input id="fb_apiKey" class="px-3 py-2 border rounded" placeholder="apiKey">
+              <input id="fb_authDomain" class="px-3 py-2 border rounded" placeholder="authDomain">
+              <input id="fb_projectId" class="px-3 py-2 border rounded" placeholder="projectId">
+              <input id="fb_storageBucket" class="px-3 py-2 border rounded" placeholder="storageBucket">
+              <input id="fb_messagingSenderId" class="px-3 py-2 border rounded" placeholder="messagingSenderId">
+              <input id="fb_appId" class="px-3 py-2 border rounded" placeholder="appId">
+            </div>
+            <div class="flex gap-2 mt-3">
+              <button id="btnInitFirebase" class="px-3 py-2 rounded-lg border">Initialise</button>
+              <button id="btnSyncNow" class="px-3 py-2 rounded-lg border">Sync Now</button>
+            </div>
+            <pre id="cloudStatus" class="text-xs text-slate-500 mt-3"></pre>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <!-- Firebase (Compat) loaded lazily if needed -->
+  <script>
+    const firebaseCDNs = [
+      'https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js',
+      'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js'
+    ];
+    async function loadFirebaseIfNeeded(){
+      if(window.firebase) return true;
+      for(const src of firebaseCDNs){
+        await new Promise((res,rej)=>{ const s=document.createElement('script'); s.src=src; s.onload=res; s.onerror=rej; document.head.appendChild(s); });
+      }
+      return !!window.firebase;
+    }
+  </script>
+
+  <!-- App Script -->
+  <script>
+  /**
+   * Duty Roster App — Single-file
+   * Storage: IndexedDB (primary) + optional Firestore sync
+   * Author: ChatGPT for JCF Fraud Dept
+   */
+
+  // ---------- Utilities ----------
+  const $ = (sel, root=document) => root.querySelector(sel);
+  const $$ = (sel, root=document) => Array.from(root.querySelectorAll(sel));
+  const fmtDate = (d) => new Date(d.getTime() - d.getTimezoneOffset()*60000).toISOString().slice(0,10);
+  const wkStartMonday = (date) => {
+    const d = new Date(date); const day = d.getDay(); // 0 Sun..6 Sat
+    const diff = (day === 0 ? -6 : 1 - day); // back to Monday
+    d.setDate(d.getDate() + diff);
+    d.setHours(0,0,0,0);
+    return d;
+  };
+  const addDays = (d, n) => { const x = new Date(d); x.setDate(x.getDate()+n); return x; };
+  const uid = () => Math.random().toString(36).slice(2,10);
+  const downloadFile = (filename, content, mime='text/plain') => {
+    const blob = new Blob([content], {type:mime});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a'); a.href=url; a.download=filename; a.click(); URL.revokeObjectURL(url);
+  };
+
+  // ---------- IndexedDB Minimal Wrapper ----------
+  const DB_NAME = 'DutyRosterDB';
+  const DB_VERSION = 1;
+  let _db;
+  function openDB(){
+    return new Promise((resolve,reject)=>{
+      const req = indexedDB.open(DB_NAME, DB_VERSION);
+      req.onupgradeneeded = (e)=>{
+        const db = e.target.result;
+        if(!db.objectStoreNames.contains('staff')){
+          const s = db.createObjectStore('staff', {keyPath:'id'});
+          s.createIndex('name','name',{unique:false});
+        }
+        if(!db.objectStoreNames.contains('rosters')){
+          db.createObjectStore('rosters', {keyPath:'weekStart'});
+        }
+        if(!db.objectStoreNames.contains('settings')){
+          db.createObjectStore('settings', {keyPath:'key'});
+        }
+      };
+      req.onsuccess = ()=>{ _db = req.result; resolve(_db); };
+      req.onerror = ()=>reject(req.error);
+    });
+  }
+  function tx(store, mode='readonly'){
+    const t = _db.transaction(store, mode); return t.objectStore(store);
+  }
+  const db = {
+    async put(store, value){ return new Promise((res,rej)=>{ const r=tx(store,'readwrite').put(value); r.onsuccess=()=>res(true); r.onerror=()=>rej(r.error); }); },
+    async get(store, key){ return new Promise((res,rej)=>{ const r=tx(store).get(key); r.onsuccess=()=>res(r.result||null); r.onerror=()=>rej(r.error); }); },
+    async del(store, key){ return new Promise((res,rej)=>{ const r=tx(store,'readwrite').delete(key); r.onsuccess=()=>res(true); r.onerror=()=>rej(r.error); }); },
+    async all(store){ return new Promise((res,rej)=>{ const items=[]; const r=tx(store).openCursor(); r.onsuccess=()=>{ const c=r.result; if(c){ items.push(c.value); c.continue(); } else res(items); }; r.onerror=()=>rej(r.error); }); }
+  };
+
+  // ---------- Default Data ----------
+  const DEFAULT_TEMPLATE = {
+    id: 'stdMEN',
+    name: 'Standard M/E/N',
+    shifts: [
+      { key:'M', label:'Morning', start:'07:00', end:'15:00' },
+      { key:'E', label:'Evening', start:'15:00', end:'23:00' },
+      { key:'N', label:'Night',   start:'23:00', end:'07:00' }
+    ]
+  };
+
+  // Settings cache
+  let SETTINGS = {
+    adminPass: '',
+    templates: [DEFAULT_TEMPLATE],
+    firebase: { apiKey:'', authDomain:'', projectId:'', storageBucket:'', messagingSenderId:'', appId:'' }
+  };
+
+  // Cloud sync handles
+  let fbApp = null, fbDb = null;
+
+  // ---------- Roster State ----------
+  let STAFF = [];
+  let CURRENT_WEEK = fmtDate(wkStartMonday(new Date()));
+  let SHIFT_CAPACITY = 4;
+  let ACTIVE_TEMPLATE_ID = DEFAULT_TEMPLATE.id;
+  let ROSTERS = {}; // cache by weekStart
+
+  function getActiveTemplate(){
+    return SETTINGS.templates.find(t=>t.id===ACTIVE_TEMPLATE_ID) || DEFAULT_TEMPLATE;
+  }
+
+  // ---------- UI Builders ----------
+  function renderStaffList(filter=''){
+    const list = $('#staffList'); list.innerHTML='';
+    const q = filter.trim().toLowerCase();
+    const data = STAFF.filter(s=> s.name.toLowerCase().includes(q)).sort((a,b)=>a.name.localeCompare(b.name));
+    for(const s of data){
+      const li = document.createElement('li');
+      li.className = 'p-2 border rounded-lg bg-white flex items-center justify-between gap-2';
+      li.draggable = true; li.dataset.id=s.id;
+      li.innerHTML = `<div><div class="font-medium">${s.name}</div><div class="text-xs text-slate-500">${s.rank||''} • ${s.role||''}</div></div><span class="text-xs text-slate-500">drag</span>`;
+      li.addEventListener('dragstart', ev=>{ ev.dataTransfer.setData('text/plain', s.id); });
+      list.appendChild(li);
+    }
+  }
+
+  function ensureWeekRoster(week){
+    if(!ROSTERS[week]){
+      ROSTERS[week] = { weekStart: week, templateId: ACTIVE_TEMPLATE_ID, capacity: SHIFT_CAPACITY, cells: {} };
+      for(let d=0; d<7; d++){
+        const day = fmtDate(addDays(new Date(week), d));
+        ROSTERS[week].cells[day] = {};
+        for(const sh of getActiveTemplate().shifts){ ROSTERS[week].cells[day][sh.key] = []; }
+      }
+    }
+    return ROSTERS[week];
+  }
+
+  function renderRosterGrid(){
+    const wrap = $('#rosterGrid');
+    const t = getActiveTemplate();
+    const wk = ensureWeekRoster(CURRENT_WEEK);
+    wk.capacity = SHIFT_CAPACITY; wk.templateId = ACTIVE_TEMPLATE_ID;
+
+    // Table header
+    const days = [...Array(7)].map((_,i)=> addDays(new Date(CURRENT_WEEK), i));
+    let html = '<div class="overflow-auto">';
+    html += '<table class="min-w-full text-sm">';
+    html += '<thead><tr><th class="p-2 border-b text-left w-40">Shift</th>' + days.map(d=>`<th class="p-2 border-b text-left">${d.toLocaleDateString('en-JM',{weekday:'short', day:'2-digit', month:'short'})}</th>`).join('') + '</tr></thead>';
+    html += '<tbody>';
+    for(const sh of t.shifts){
+      html += `<tr class="align-top">
+        <td class="p-2 border-b w-40">
+          <div class="font-medium">${sh.label} <span class="text-slate-400">(${sh.key})</span></div>
+          <div class="text-xs text-slate-500">${sh.start}–${sh.end}</div>
+        </td>`;
+      for(const d of days){
+        const dayKey = fmtDate(d); const cell = wk.cells[dayKey][sh.key] || [];
+        const names = cell.map(id => (STAFF.find(s=>s.id===id)||{name:'[deleted]'}).name);
+        html += `<td class="p-2 border-b align-top">
+          <div class="droptarget border rounded-lg p-2" data-day="${dayKey}" data-shift="${sh.key}">
+            <div class="flex items-center justify-between mb-1">
+              <span class="text-xs text-slate-500">${cell.length}/${wk.capacity}</span>
+              <button class="text-xs text-sky-700" data-quickassign="${dayKey}|${sh.key}">+ Assign</button>
+            </div>
+            <ul class="space-y-1">
+              ${cell.map(id=>{
+                const s = STAFF.find(x=>x.id===id);
+                const nm = s? s.name : '[deleted]';
+                return `<li class="px-2 py-1 bg-slate-100 rounded flex items-center justify-between gap-2">
+                  <span>${nm}</span>
+                  <button class="text-xs text-slate-500" data-unassign="${dayKey}|${sh.key}|${id}">remove</button>
+                </li>`
+              }).join('')}
+            </ul>
+          </div>
+        </td>`;
+      }
+      html += '</tr>';
+    }
+    html += '</tbody></table></div>';
+    wrap.innerHTML = html;
+
+    // Hook up DnD & buttons
+    $$('#rosterGrid .droptarget').forEach(el=>{
+      el.addEventListener('dragover', e=>{ e.preventDefault(); el.classList.add('dragover'); });
+      el.addEventListener('dragleave', ()=> el.classList.remove('dragover'));
+      el.addEventListener('drop', e=>{ e.preventDefault(); el.classList.remove('dragover'); const id=e.dataTransfer.getData('text/plain'); quickAssign(el.dataset.day, el.dataset.shift, id); });
+    });
+    $$('[data-quickassign]').forEach(btn=>{
+      btn.addEventListener('click', ()=>{
+        const [day, sh] = btn.dataset.quickassign.split('|');
+        openQuickAssign(day, sh);
+      });
+    });
+    $$('[data-unassign]').forEach(btn=>{
+      btn.addEventListener('click', ()=>{
+        const [day, sh, id] = btn.dataset.unassign.split('|');
+        unassign(day, sh, id);
+      });
+    });
+  }
+
+  // ---------- Assignments ----------
+  function cellHas(wk, day, sh, id){ return (wk.cells[day][sh]||[]).includes(id); }
+  function dayHasAny(wk, day, id){ return Object.values(wk.cells[day]).some(arr=>arr.includes(id)); }
+  function countWeekShifts(wk, id){ let c=0; for(const day of Object.keys(wk.cells)){ for(const arr of Object.values(wk.cells[day])) c+= arr.filter(x=>x===id).length; } return c; }
+
+  function respectsPrefs(staff, sh){
+    if(!staff) return true; const prefs = (staff.prefs||[]).map(x=>x.trim().toUpperCase()).filter(Boolean);
+    return prefs.length? prefs.includes(sh.toUpperCase()) : true;
+  }
+  function isDayOff(staff, day){
+    if(!staff) return false; const d = new Date(day).getDay();
+    const offs = staff.daysOff || []; return offs.includes(d);
+  }
+  function restViolation(prevShiftKey, currShiftKey){
+    // Simple rule: avoid Night -> Morning next day
+    return prevShiftKey==='N' && currShiftKey==='M';
+  }
+  function quickAssign(day, sh, id){
+    const wk = ensureWeekRoster(CURRENT_WEEK);
+    const s = STAFF.find(x=>x.id===id);
+    if(!s){ alert('Staff not found.'); return; }
+    if(isDayOff(s, day)){ alert(`${s.name} has this day off.`); return; }
+    if(dayHasAny(wk, day, id)){ alert(`${s.name} already has a shift on this day.`); return; }
+    if((wk.cells[day][sh]||[]).length >= wk.capacity){ alert('Shift at capacity.'); return; }
+    if(countWeekShifts(wk, id) >= (s.maxWeek||5)){ alert(`${s.name} reached weekly limit.`); return; }
+    // Check previous day rest N->M rule
+    const prevDay = fmtDate(addDays(new Date(day), -1));
+    if(wk.cells[prevDay]){
+      const prev = Object.entries(wk.cells[prevDay]).find(([k,arr])=>arr.includes(id));
+      if(prev && restViolation(prev[0], sh)){ alert(`${s.name} cannot work Night then Morning next day.`); return; }
+    }
+    wk.cells[day][sh].push(id);
+    renderRosterGrid();
+    persistRoster();
+  }
+  function unassign(day, sh, id){
+    const wk = ensureWeekRoster(CURRENT_WEEK);
+    wk.cells[day][sh] = (wk.cells[day][sh]||[]).filter(x=>x!==id);
+    renderRosterGrid();
+    persistRoster();
+  }
+
+  function openQuickAssign(day, sh){
+    // Simple prompt UI — could be replaced with a modal
+    const names = STAFF.map(s=>`${s.id}|${s.name}`).join('\n');
+    const pick = prompt(`Assign to ${sh} on ${day}.\nPaste/enter staff ID (drag is easier). Available IDs:\n${names}`);
+    if(!pick) return; const id = pick.split('|')[0].trim(); quickAssign(day, sh, id);
+  }
+
+  function autoAssign(){
+    const wk = ensureWeekRoster(CURRENT_WEEK);
+    const t = getActiveTemplate();
+    const staffPool = [...STAFF];
+    // fairness: sort by (assigned this week), then name
+    staffPool.sort((a,b)=> (countWeekShifts(wk,a.id)-countWeekShifts(wk,b.id)) || a.name.localeCompare(b.name));
+
+    for(let i=0;i<7;i++){
+      const day = fmtDate(addDays(new Date(CURRENT_WEEK), i));
+      for(const sh of t.shifts){
+        const cell = wk.cells[day][sh.key];
+        while(cell.length < wk.capacity){
+          // pick next eligible staff
+          const candidate = staffPool.find(s=>{
+            return !isDayOff(s, day)
+              && !dayHasAny(wk, day, s.id)
+              && countWeekShifts(wk, s.id) < (s.maxWeek||5)
+              && respectsPrefs(s, sh.key)
+              && !prevNightToMorningConflict(wk, day, sh.key, s.id);
+          });
+          if(!candidate) break;
+          cell.push(candidate.id);
+          // update ordering to push candidate to end
+          staffPool.push(staffPool.splice(staffPool.indexOf(candidate),1)[0]);
+        }
+      }
+    }
+    renderRosterGrid();
+    persistRoster();
+  }
+  function prevNightToMorningConflict(wk, day, shKey, staffId){
+    const prevDay = fmtDate(addDays(new Date(day), -1));
+    if(!wk.cells[prevDay]) return false;
+    const prev = Object.entries(wk.cells[prevDay]).find(([k,arr])=>arr.includes(staffId));
+    return prev ? restViolation(prev[0], shKey) : false;
+  }
+
+  // ---------- Validation & Export ----------
+  function validateWeek(){
+    const wk = ensureWeekRoster(CURRENT_WEEK);
+    const issues = [];
+    // capacity + duplicates per day
+    for(const [day, shifts] of Object.entries(wk.cells)){
+      const assignedSet = new Set();
+      for(const [k, arr] of Object.entries(shifts)){
+        if(arr.length > wk.capacity) issues.push(`${day} ${k}: over capacity ${arr.length}/${wk.capacity}`);
+        arr.forEach(id=>{
+          if(assignedSet.has(id)) issues.push(`${day}: ${getName(id)} assigned multiple shifts.`);
+          assignedSet.add(id);
+        });
+      }
+    }
+    // weekly max + rest rule
+    for(const s of STAFF){
+      const count = countWeekShifts(wk, s.id);
+      if(count > (s.maxWeek||5)) issues.push(`${s.name}: ${count} exceeds weekly max ${s.maxWeek||5}`);
+    }
+    // Night->Morning
+    for(let i=1;i<7;i++){
+      const day = fmtDate(addDays(new Date(CURRENT_WEEK), i));
+      const prev = fmtDate(addDays(new Date(CURRENT_WEEK), i-1));
+      for(const s of STAFF){
+        const hadNight = (wk.cells[prev]['N']||[]).includes(s.id);
+        const hasMorning = (wk.cells[day]['M']||[]).includes(s.id);
+        if(hadNight && hasMorning) issues.push(`${s.name}: Night then Morning (rest violation) ${prev}→${day}`);
+      }
+    }
+    alert(issues.length? `Issues found (\n- ${issues.join('\n- ')} )` : 'All good.');
+  }
+  function getName(id){ return (STAFF.find(s=>s.id===id)||{name:id}).name; }
+
+  function exportCSV(){
+    const wk = ensureWeekRoster(CURRENT_WEEK); const t=getActiveTemplate();
+    const days = [...Array(7)].map((_,i)=> fmtDate(addDays(new Date(CURRENT_WEEK), i)));
+    let out = ['Shift,Key,'+days.join(',')];
+    for(const sh of t.shifts){
+      const row = [sh.label, sh.key];
+      for(const d of days){ row.push((wk.cells[d][sh.key]||[]).map(getName).join(' | ')); }
+      out.push(row.map(v=>`"${v}"`).join(','));
+    }
+    downloadFile(`Roster_${CURRENT_WEEK}.csv`, out.join('\n'), 'text/csv');
+  }
+
+  // ---------- Reports ----------
+  function buildWeeklyReport(){
+    const wk = ensureWeekRoster($('#reportWeek').value || CURRENT_WEEK);
+    const t = SETTINGS.templates.find(x=>x.id===wk.templateId) || getActiveTemplate();
+    const days = [...Array(7)].map((_,i)=> fmtDate(addDays(new Date(wk.weekStart), i)));
+    let txt = `JCF Fraud Dept — Weekly Roster Summary\nWeek starting ${wk.weekStart}\nCapacity per shift: ${wk.capacity}\n\n`;
+    for(const d of days){
+      const heading = new Date(d).toLocaleDateString('en-JM',{weekday:'long', day:'2-digit', month:'long', year:'numeric'});
+      txt += `${heading}\n`;
+      for(const sh of t.shifts){
+        const names = (wk.cells[d][sh.key]||[]).map(getName).join(', ') || '—';
+        txt += `  • ${sh.label} (${sh.start}-${sh.end}): ${names}\n`;
+      }
+      txt += `\n`;
+    }
+    $('#reportOutput').textContent = txt;
+  }
+
+  // ---------- Persistence ----------
+  async function persistRoster(){
+    const wk = ensureWeekRoster(CURRENT_WEEK);
+    await db.put('rosters', wk);
+  }
+  async function loadRoster(week){
+    const r = await db.get('rosters', week);
+    if(r) ROSTERS[week] = r;
+  }
+  async function loadAll(){
+    await openDB();
+    // Settings
+    const raw = await db.all('settings');
+    raw.forEach(r=>{ if(r.key==='adminPass') SETTINGS.adminPass=r.value; if(r.key==='templates') SETTINGS.templates=r.value; if(r.key==='firebase') SETTINGS.firebase=r.value; });
+    // Staff
+    STAFF = await db.all('staff');
+    // Roster current week
+    await loadRoster(CURRENT_WEEK);
+
+    // UI hydrate
+    hydrateSettingsUI();
+    hydrateTemplatesUI();
+    renderStaffList();
+    $('#weekStart').value = CURRENT_WEEK;
+    $('#reportWeek').value = CURRENT_WEEK;
+    renderRosterGrid();
+    updateStaffTable();
+  }
+
+  async function saveSettings(){
+    await db.put('settings', {key:'adminPass', value: $('#adminPass').value||''});
+    await db.put('settings', {key:'templates', value: SETTINGS.templates});
+    await db.put('settings', {key:'firebase', value: SETTINGS.firebase});
+  }
+
+  // ---------- Templates UI ----------
+  function hydrateTemplatesUI(){
+    // select
+    const sel = $('#templateSelect'); sel.innerHTML='';
+    for(const t of SETTINGS.templates){
+      const opt = document.createElement('option'); opt.value=t.id; opt.textContent=t.name; if(t.id===ACTIVE_TEMPLATE_ID) opt.selected=true; sel.appendChild(opt);
+    }
+    // list
+    const list = $('#templateList'); list.innerHTML='';
+    SETTINGS.templates.forEach(t=>{
+      const card = document.createElement('div');
+      card.className = 'border rounded-xl p-3';
+      card.innerHTML = `
+        <div class="flex items-center justify-between">
+          <div class="font-medium">${t.name} <span class="text-slate-400">(${t.id})</span></div>
+          <div class="flex gap-2">
+            <button data-edittemplate="${t.id}" class="px-2 py-1 border rounded text-xs">Edit</button>
+            <button data-deltpl="${t.id}" class="px-2 py-1 border rounded text-xs text-rose-600">Delete</button>
+          </div>
+        </div>
+        <div class="text-sm text-slate-600 mt-2">${t.shifts.map(s=>`${s.label} ${s.start}-${s.end} [${s.key}]`).join(' • ')}</div>`;
+      list.appendChild(card);
+    });
+  }
+
+  function addTemplate(){
+    const name = prompt('Template name?'); if(!name) return;
+    const id = prompt('Short id (no spaces)?', name.toLowerCase().replace(/[^a-z0-9]/g,'')); if(!id) return;
+    const shiftsStr = prompt('Define shifts as label|key|start|end; separate with commas.\nExample: Morning|M|07:00|15:00, Evening|E|15:00|23:00, Night|N|23:00|07:00');
+    if(!shiftsStr) return;
+    const shifts = shiftsStr.split(',').map(x=>x.trim()).filter(Boolean).map(s=>{ const [label,key,start,end]=s.split('|').map(y=>y.trim()); return {label,key,start,end}; });
+    SETTINGS.templates.push({id, name, shifts});
+    hydrateTemplatesUI();
+    saveSettings();
+  }
+
+  // ---------- Staff CRUD ----------
+  function updateStaffTable(){
+    $('#staffCount').textContent = `(${STAFF.length})`;
+    const tbody = $('#staffTable'); tbody.innerHTML='';
+    STAFF.sort((a,b)=>a.name.localeCompare(b.name)).forEach(s=>{
+      const tr = document.createElement('tr'); tr.className='border-b';
+      tr.innerHTML = `
+        <td class="py-2 pr-2">${s.name}</td>
+        <td class="py-2 pr-2">${s.rank||''}</td>
+        <td class="py-2 pr-2">${s.role||''}</td>
+        <td class="py-2 pr-2">${s.maxWeek||5}</td>
+        <td class="py-2 pr-2">
+          <button class="text-sky-700 text-xs" data-editstaff="${s.id}">Edit</button>
+          <span class="text-slate-300">|</span>
+          <button class="text-rose-700 text-xs" data-delstaff="${s.id}">Delete</button>
+        </td>`;
+      tbody.appendChild(tr);
+    });
+    // actions
+    $$('[data-editstaff]').forEach(btn=>btn.addEventListener('click',()=>editStaff(btn.dataset.editstaff)));
+    $$('[data-delstaff]').forEach(btn=>btn.addEventListener('click',()=>deleteStaff(btn.dataset.delstaff)));
+  }
+
+  async function saveStaffFromForm(e){
+    e.preventDefault();
+    const id = $('#staffId').value || uid();
+    const staff = {
+      id,
+      name: $('#staffName').value.trim(),
+      rank: $('#staffRank').value.trim(),
+      role: $('#staffRole').value.trim(),
+      phone: $('#staffPhone').value.trim(),
+      email: $('#staffEmail').value.trim(),
+      maxWeek: parseInt($('#staffMaxWeek').value||'5',10),
+      prefs: $('#staffPrefs').value.split(',').map(x=>x.trim().toUpperCase()).filter(Boolean),
+      daysOff: $$('.dayoff:checked').map(c=>parseInt(c.value,10)),
+      notes: $('#staffNotes').value.trim(),
+    };
+    if(!staff.name){ alert('Name is required'); return; }
+    await db.put('staff', staff);
+    // update cache
+    const idx = STAFF.findIndex(x=>x.id===id);
+    if(idx>=0) STAFF[idx]=staff; else STAFF.push(staff);
+    $('#staffForm').reset(); $('#staffId').value='';
+    renderStaffList($('#staffSearch').value);
+    updateStaffTable();
+  }
+
+  async function editStaff(id){
+    const s = STAFF.find(x=>x.id===id); if(!s) return;
+    $('#staffId').value = s.id;
+    $('#staffName').value = s.name;
+    $('#staffRank').value = s.rank||'';
+    $('#staffRole').value = s.role||'';
+    $('#staffPhone').value = s.phone||'';
+    $('#staffEmail').value = s.email||'';
+    $('#staffMaxWeek').value = s.maxWeek||5;
+    $('#staffPrefs').value = (s.prefs||[]).join(',');
+    $$('.dayoff').forEach(cb=>{ cb.checked = (s.daysOff||[]).includes(parseInt(cb.value,10)); });
+    $('#staffNotes').value = s.notes||'';
+    window.scrollTo({top:0, behavior:'smooth'});
+  }
+
+  async function deleteStaff(id){
+    if(!confirm('Delete this staff member?')) return;
+    await db.del('staff', id);
+    STAFF = STAFF.filter(s=>s.id!==id);
+    renderStaffList($('#staffSearch').value);
+    updateStaffTable();
+  }
+
+  // Import/Export Staff JSON
+  function exportStaff(){
+    downloadFile('staff.json', JSON.stringify(STAFF, null, 2), 'application/json');
+  }
+  function importStaff(){
+    const input = document.createElement('input'); input.type='file'; input.accept='.json,application/json';
+    input.onchange = async ()=>{
+      const file = input.files[0]; if(!file) return; const txt = await file.text();
+      try{ const arr = JSON.parse(txt); if(!Array.isArray(arr)) throw new Error('Invalid');
+        for(const s of arr){ if(!s.id) s.id = uid(); await db.put('staff', s); }
+        STAFF = await db.all('staff'); renderStaffList(); updateStaffTable(); alert('Imported.');
+      }catch(e){ alert('Invalid JSON'); }
+    };
+    input.click();
+  }
+
+  // ---------- Settings UI ----------
+  function hydrateSettingsUI(){
+    $('#adminPass').value = SETTINGS.adminPass||'';
+    const f = SETTINGS.firebase||{};
+    $('#fb_apiKey').value = f.apiKey||'';
+    $('#fb_authDomain').value = f.authDomain||'';
+    $('#fb_projectId').value = f.projectId||'';
+    $('#fb_storageBucket').value = f.storageBucket||'';
+    $('#fb_messagingSenderId').value = f.messagingSenderId||'';
+    $('#fb_appId').value = f.appId||'';
+  }
+
+  function readFirebaseSettings(){
+    SETTINGS.firebase = {
+      apiKey: $('#fb_apiKey').value.trim(),
+      authDomain: $('#fb_authDomain').value.trim(),
+      projectId: $('#fb_projectId').value.trim(),
+      storageBucket: $('#fb_storageBucket').value.trim(),
+      messagingSenderId: $('#fb_messagingSenderId').value.trim(),
+      appId: $('#fb_appId').value.trim(),
+    };
+  }
+
+  async function initFirebase(){
+    readFirebaseSettings();
+    if(!SETTINGS.firebase.apiKey || !SETTINGS.firebase.projectId){
+      $('#cloudStatus').textContent = 'Please fill apiKey and projectId at minimum.';
+      return;
+    }
+    $('#cloudStatus').textContent = 'Loading Firebase…';
+    try{
+      const ok = await loadFirebaseIfNeeded();
+      if(!ok) throw new Error('CDN failed');
+      fbApp = firebase.initializeApp(SETTINGS.firebase);
+      fbDb = firebase.firestore();
+      $('#cloudStatus').textContent = 'Firebase initialised.';
+      await saveSettings();
+    }catch(e){
+      $('#cloudStatus').textContent = 'Init error: '+e.message;
+    }
+  }
+
+  async function syncNow(){
+    if(!fbDb){ $('#cloudStatus').textContent = 'Initialise Firebase first.'; return; }
+    $('#cloudStatus').textContent = 'Syncing…';
+    try{
+      // Push staff
+      const batch = fbDb.batch();
+      const staffCol = fbDb.collection('jcf_staff');
+      for(const s of STAFF){ const ref = staffCol.doc(s.id); batch.set(ref, s, {merge:true}); }
+      // Push current week roster
+      const wk = ensureWeekRoster(CURRENT_WEEK);
+      const rref = fbDb.collection('jcf_rosters').doc(wk.weekStart);
+      batch.set(rref, wk, {merge:true});
+      await batch.commit();
+      $('#cloudStatus').textContent = 'Uploaded staff and current roster.';
+    }catch(e){ $('#cloudStatus').textContent = 'Sync error: '+e.message; }
+  }
+
+  // ---------- Nav & Events ----------
+  function setTab(name){
+    $$('#main [data-tab]');
+    $$('#main [data-tab]');
+  }
+  function activateTab(name){
+    $$('[data-tab]').forEach(t=> t.classList.remove('active'));
+    $(`#tab-${name}`).classList.add('active');
+    $$('.tablink').forEach(b=>{
+      b.classList.remove('bg-sky-100','text-sky-700');
+      if(b.dataset.nav===name) b.classList.add('bg-sky-100','text-sky-700');
+    });
+  }
+
+  // ---------- Init ----------
+  (async function init(){
+    await loadAll();
+
+    // Seed some example staff if empty (up to 50 slots):
+    if(STAFF.length===0){
+      const ranks = ['Sgt','Cpl','DC','W/Const'];
+      for(let i=1;i<=12;i++){
+        const s={id:uid(), name:`Officer ${i}`, rank:ranks[i%ranks.length], role: i%3? 'Investigator':'Analyst', maxWeek:5, prefs:[], daysOff:[0], notes:''};
+        await db.put('staff', s); STAFF.push(s);
+      }
+      renderStaffList(); updateStaffTable();
+    }
+
+    // Nav
+    $$('.tablink').forEach(btn=> btn.addEventListener('click', ()=> activateTab(btn.dataset.nav)));
+
+    // Roster events
+    $('#weekStart').addEventListener('change', async (e)=>{ CURRENT_WEEK = fmtDate(wkStartMonday(new Date(e.target.value))); $('#weekStart').value=CURRENT_WEEK; await loadRoster(CURRENT_WEEK); renderRosterGrid(); $('#reportWeek').value=CURRENT_WEEK; });
+    $('#templateSelect').addEventListener('change', (e)=>{ ACTIVE_TEMPLATE_ID=e.target.value; renderRosterGrid(); saveSettings(); });
+    $('#shiftCapacity').addEventListener('change', (e)=>{ SHIFT_CAPACITY = Math.max(1, parseInt(e.target.value||'1',10)); renderRosterGrid(); });
+    $('#btnAutoAssign').addEventListener('click', autoAssign);
+    $('#btnClearWeek').addEventListener('click', ()=>{ if(confirm('Clear all assignments for this week?')){ const wk=ensureWeekRoster(CURRENT_WEEK); for(const d in wk.cells){ for(const k in wk.cells[d]) wk.cells[d][k]=[]; } renderRosterGrid(); persistRoster(); }});
+    $('#btnValidate').addEventListener('click', validateWeek);
+
+    $('#btnExportCSV').addEventListener('click', exportCSV);
+    $('#btnPrint').addEventListener('click', ()=>window.print());
+    $('#btnSave').addEventListener('click', persistRoster);
+
+    // Staff sidebar
+    $('#staffSearch').addEventListener('input', (e)=> renderStaffList(e.target.value));
+    $('#refreshStaff').addEventListener('click', ()=> renderStaffList($('#staffSearch').value));
+
+    // Staff form & table
+    $('#staffForm').addEventListener('submit', saveStaffFromForm);
+    $('#staffFormReset').addEventListener('click', ()=>{ $('#staffForm').reset(); $('#staffId').value=''; $$('.dayoff').forEach(cb=>cb.checked=false); });
+    $('#exportStaffBtn').addEventListener('click', exportStaff);
+    $('#importStaffBtn').addEventListener('click', importStaff);
+
+    // Templates
+    $('#addTemplateBtn').addEventListener('click', addTemplate);
+    document.addEventListener('click', (e)=>{
+      if(e.target.matches('[data-deltpl]')){
+        const id=e.target.dataset.deltpl; if(!confirm('Delete this template?')) return; SETTINGS.templates=SETTINGS.templates.filter(t=>t.id!==id); if(ACTIVE_TEMPLATE_ID===id) ACTIVE_TEMPLATE_ID=DEFAULT_TEMPLATE.id; hydrateTemplatesUI(); saveSettings(); renderRosterGrid();
+      }
+      if(e.target.matches('[data-edittemplate]')){
+        const id=e.target.dataset.edittemplate; const t=SETTINGS.templates.find(x=>x.id===id); if(!t) return;
+        const name = prompt('Template name', t.name)??t.name; const shiftsStr = prompt('Edit shifts label|key|start|end, comma separated', t.shifts.map(s=>`${s.label}|${s.key}|${s.start}|${s.end}`).join(', '));
+        if(shiftsStr){ t.name=name; t.shifts = shiftsStr.split(',').map(x=>x.trim()).filter(Boolean).map(s=>{ const [label,key,start,end]=s.split('|').map(y=>y.trim()); return {label,key,start,end}; }); hydrateTemplatesUI(); saveSettings(); renderRosterGrid(); }
+      }
+    });
+
+    // Reports
+    $('#btnBuildReport').addEventListener('click', buildWeeklyReport);
+    $('#btnDownloadReport').addEventListener('click', ()=>{
+      const txt = $('#reportOutput').textContent || (buildWeeklyReport(), $('#reportOutput').textContent);
+      downloadFile(`Roster_Summary_${$('#reportWeek').value||CURRENT_WEEK}.txt`, txt, 'text/plain');
+    });
+
+    // Settings
+    $('#saveSettings').addEventListener('click', async ()=>{ SETTINGS.adminPass = $('#adminPass').value; await saveSettings(); alert('Settings saved.'); });
+    $('#btnInitFirebase').addEventListener('click', initFirebase);
+    $('#btnSyncNow').addEventListener('click', syncNow);
+
+    // Simple passcode gate (optional)
+    if(SETTINGS.adminPass){
+      const ok = await promptPass(); if(!ok){ document.body.innerHTML = '<div class="h-screen grid place-content-center"><div class="text-center"><h2 class="text-2xl font-semibold mb-2">Access Denied</h2><p class="text-slate-600">Incorrect passcode.</p></div></div>'; }
+    }
+
+  })();
+
+  async function promptPass(){
+    for(let i=0;i<3;i++){
+      const p = prompt('Enter admin passcode to access roster:');
+      if(p===SETTINGS.adminPass) return true;
+    }
+    return false;
+  }
+  </script>
+</body>
+</html>
